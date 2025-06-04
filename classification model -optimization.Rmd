@@ -1,0 +1,450 @@
+---
+title: "classsification model optimization"
+author: "omon das"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    toc: yes
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+### About Dataset
+
+This dataset consists of 101 animals from a zoo.
+
+There are 16 variables with various traits to describe the animals.
+
+### The 7 Class Types are: Mammal, Bird, Reptile, Fish, Amphibian, Bug and Invertebrate
+
+The purpose for this dataset is to be able to predict the classification
+of the animals, based upon the variables. It is the perfect dataset for
+those who are new to learning Machine Learning.
+
+animal_name: Unique for each instance
+
+hair Boolean
+
+feathers Boolean
+
+eggs Boolean
+
+milk Boolean
+
+airborne Boolean
+
+aquatic Boolean
+
+predator Boolean
+
+toothed Boolean
+
+backbone Boolean
+
+breathes Boolean
+
+venomous Boolean
+
+fins Boolean
+
+legs Numeric (set of values: {0,2,4,5,6,8})
+
+tail Boolean
+
+domestic Boolean
+
+catsize Boolean
+
+class_type Numeric (integer values in range [1,7])
+
+| Col1 | Col2         |
+|------|--------------|
+| 1    | mammal       |
+| 2    | bird         |
+| 3    | reptile      |
+| 4    | fish         |
+| 5    | amphibian    |
+| 6    | bug          |
+| 7    | intervibrate |
+
+
+
+
+```{r}
+
+library(tidyverse)
+library(mlr)
+```
+
+```{r}
+zoo=read.csv("D:\\wallpapers and photos\\csv\\zoo.csv")
+
+
+```
+
+```{r}
+zoo_clean=zoo %>% 
+  mutate_if(is.integer,as.factor) %>% 
+  mutate(legs=as.numeric(legs))
+  
+
+tibble(zoo_clean)
+```
+
+```{r}
+zoo_untidy1=zoo_clean %>% 
+  select(-animal_name,-legs) %>% 
+  gather(key = "Variable",value = "value",-class_type) %>% 
+  mutate(value=as.factor(value))
+
+
+
+
+
+
+zoo_untidy2=gather(zoo_clean %>% select(animal_name,legs,class_type),key = "Variable",value = "value",-class_type)
+
+
+
+```
+
+```{r}
+
+library(ggplot2)
+
+ggplot(zoo_untidy1) +
+ aes(x = class_type, fill = value) +
+ geom_bar() +
+ scale_fill_viridis_d(option = "cividis", 
+ direction = 1) +
+ theme_bw() +
+ facet_wrap(vars(Variable))
+
+
+
+
+
+
+count=zoo_untidy2 %>%
+ filter(Variable %in% "animal_name") %>%
+ ggplot() +
+ aes(x = class_type, fill = value) +
+ geom_bar() +
+ scale_fill_hue(direction = 1) +
+ labs(title = "animal count") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 15L, face = "bold", 
+ hjust = 0.5)) +
+ facet_wrap(vars(value))
+
+plotly::ggplotly(count)
+```
+
+```{r}
+zoo_clean2=zoo_clean %>% 
+  select(-animal_name)
+
+tibble(zoo_clean2)
+
+zooTask=makeClassifTask(data = zoo_clean2, target = "class_type")
+
+
+lrn.naivebayes=makeLearner("classif.naiveBayes")
+
+
+kfold=makeResampleDesc("RepCV",folds=10,reps=10)
+
+
+naivecv=resample(task = zooTask, learner = lrn.naivebayes,resampling = kfold,acc)
+
+
+naivecv
+
+
+calculateConfusionMatrix(naivecv$pred)
+
+
+```
+
+```{r}
+zoo_clean3=zoo_clean2 %>% 
+  select(legs,class_type)
+
+zooTaskknn=makeClassifTask(data=zoo_clean3,target = "class_type")
+
+
+lrn.knn=makeLearner("classif.knn")
+
+ps2=makeParamSet(
+  makeIntegerParam("k",0,10)
+)
+
+kfold
+
+sc=makeTuneControlGrid()
+
+lrn.knn.tune=makeTuneWrapper(learner = lrn.knn,resampling = kfold,control = sc,par.set = ps2)
+
+
+kfold_outer=makeResampleDesc("CV",iters=5)
+
+
+knncv=resample(learner = lrn.knn.tune, task=zooTaskknn,resampling = kfold_outer,acc)
+
+
+knncv
+
+
+
+
+
+```
+
+```{r}
+zooTask
+
+lrn.svm=makeLearner("classif.svm")
+
+getParamSet(lrn.svm)
+
+
+ps3=makeParamSet(
+  makeNumericParam("cost",0,20),
+  makeDiscreteParam("kernel",c("linear","polynomial","radial","sigmoid")),
+  makeIntegerParam("degree",1,10),
+  makeNumericParam("gamma",1,20)
+)
+
+kfold
+
+sc=makeTuneControlRandom(maxit = 50)
+
+
+lrn.svm.tune=makeTuneWrapper(learner = lrn.svm, control = sc, resampling = kfold,par.set = ps3)
+
+
+svmcv=resample(learner = lrn.svm.tune, task = zooTask, resampling = kfold_outer,acc)
+
+svmcv
+
+
+
+
+calculateConfusionMatrix(svmcv$pred)
+
+```
+
+```{r}
+zooTaskknn
+
+lrn.lda=makeLearner("classif.lda")
+
+kfold
+
+ldacv=resample(learner=lrn.lda,task=zooTaskknn,resampling = kfold_outer,acc)
+
+ldacv
+
+
+train.lda=train(learner=lrn.lda,task=zooTaskknn)
+
+modeldata=getLearnerModel(train.lda)
+
+
+
+ldapreds=predict(modeldata)$x
+
+
+
+
+
+```
+
+```{r}
+zooTask
+
+
+lrn.rpart=makeLearner("classif.rpart")
+
+getParamSet(lrn.rpart)
+
+ps.rpart=makeParamSet(
+  makeIntegerParam("minsplit",0,30),
+  makeIntegerParam("minbucket",1,10),
+  makeNumericParam("cp",0,1),
+  makeIntegerParam("maxdepth",1,30)
+)
+
+kfold=makeResampleDesc("CV", iters=5)
+
+
+sc.rpart=makeTuneControlRandom(maxit = 50)
+
+
+lrn.rpart.tune=makeTuneWrapper(learner = lrn.rpart, par.set = ps.rpart, control =sc.rpart,resampling = kfold )
+
+
+tp.rpart=tuneParams(learner = lrn.rpart,task= zooTask, par.set = ps.rpart, control =sc.rpart,resampling = kfold )
+
+
+kfold_outer=makeResampleDesc("CV", iters=3)
+
+rpartcv=resample(task = zooTask, learner = lrn.rpart.tune, resampling = kfold_outer, acc)
+
+
+
+
+rpartcv
+
+
+
+
+
+
+
+```
+
+```{r}
+
+tp.rpart
+
+
+rpart.tuned=setHyperPars(learner = lrn.rpart, par.vals = tp.rpart$x)
+
+
+model.rpart=train(learner = rpart.tuned , task = zooTask )
+
+
+library(rpart.plot)
+
+rpartdata=getLearnerModel(model.rpart)
+
+
+
+
+rpart.plot(rpartdata,roundint = FALSE,box.palette = "BuBn",type = 5)
+
+
+
+calculateConfusionMatrix(rpartcv$pred)
+
+
+
+
+```
+
+```{r}
+zooTask
+
+lrn.random=makeLearner("classif.randomForest")
+
+getParamSet(lrn.random)
+
+
+
+ps.rand=makeParamSet(
+  makeIntegerParam("ntree", 200,200),
+  makeIntegerParam("mtry",1,50),
+  makeIntegerParam("nodesize",1,5),
+  makeIntegerParam("maxnodes",5,150)
+)
+
+kfold=makeResampleDesc("RepCV", folds=5, reps=5)
+
+sc=makeTuneControlRandom(maxit = 50)
+
+
+lrn.random.tune=makeTuneWrapper(learner = lrn.random, par.set = ps.rand,resampling =  kfold,control = sc)
+
+
+randcv=resample(learner = lrn.random.tune, task = zooTask,resampling = kfold_outer, acc)
+
+
+randcv
+  
+
+```
+
+```{r}
+tp=tuneParams(learner = lrn.random,task = zooTask, par.set = ps.rand,resampling =  kfold,control = sc,acc)
+
+lrn.random.tune.set=setHyperPars(lrn.random,par.vals = tp$x)
+
+model.random=train(learner=lrn.random.tune.set,task=zooTask )
+
+
+tp
+
+
+```
+
+```{r}
+
+model.random.data=getLearnerModel(model.random)
+
+calculateConfusionMatrix(randcv$pred)
+```
+
+```{r}
+
+zoo_clean4=zoo %>% 
+  select(-animal_name) %>% 
+  mutate(class_type=as.factor(class_type))
+
+tibble(zoo_clean4)
+
+zooTask2=makeClassifTask(data=zoo_clean4,target = "class_type")
+
+lrn.xg=makeLearner("classif.xgboost")
+
+
+getParamSet(lrn.xg)
+
+
+
+ps.xg=makeParamSet(
+  makeNumericParam("eta",0.3,1),
+  makeNumericParam("gamma",0,5),
+  makeIntegerParam("max_depth",6,10),
+  makeNumericParam("min_child_weight",1,10),
+  makeNumericParam("subsample",0,1),
+  makeNumericParam("colsample_bytree", 0,1),
+  makeIntegerParam("nrounds",20,20)
+)
+
+
+kfold=makeResampleDesc("CV",iters=5)
+
+sc=makeTuneControlRandom(maxit=100)
+
+lrn.xg.tune=makeTuneWrapper(learner = lrn.xg,resampling = kfold,control = sc,par.set = ps.xg)
+kfold_outer=makeResampleDesc("CV",iters=3)
+
+xgcv=resample(learner = lrn.xg.tune,task = zooTask2,acc,resampling=kfold_outer)
+
+```
+
+```{r}
+xgcv
+
+
+tp=tuneParams(learner = lrn.xg,task=zooTask2,resampling = kfold_outer,control = sc,par.set = ps.xg)
+
+lrn.xg.tune.set=setHyperPars(learner = lrn.xg,par.vals = tp$x)
+
+model.xg=train(lrn.xg.tune.set,zooTask2)
+
+
+
+
+
+```
+
+```{r}
+model.xg.data=getLearnerModel(model.xg)
+
+calculateConfusionMatrix(xgcv$pred)
+
+```
